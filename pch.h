@@ -9,6 +9,8 @@
 #include <functional>
 #include <memory>
 #include <format>
+#include <ranges>
+#include <string_view>
 
 #include "imgui/imgui.h"
 

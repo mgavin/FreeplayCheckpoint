@@ -497,7 +497,7 @@ void CheckpointPlugin::RenderSettings() {
     ImGui::SameLine(0.f, 50.f);
     static bool ignore_freeze_ball;
     ignore_freeze_ball = cvarManager->getCvar("cpt_ignore_freeze_ball").getBoolValue();
-    if (ImGui::Checkbox("Ignore While Playing##next", &ignore_freeze_ball)) {
+    if (ImGui::Checkbox("Ignore While Playing##fzbl", &ignore_freeze_ball)) {
         cvarManager->getCvar("cpt_ignore_freeze_ball").setValue(ignore_freeze_ball);
     }
 
@@ -600,6 +600,8 @@ void CheckpointPlugin::RenderSettings() {
     static std::vector<std::string> twoval_holder;
     static std::string var_car_rot;
     var_car_rot = cvarManager->getCvar("cpt_variance_car_rot").getStringValue();
+    replace(var_car_rot, "(", "");
+    replace(var_car_rot, ")", "");
     split(var_car_rot, twoval_holder, ',');
     switch (twoval_holder.size()) {
     case 0:
@@ -607,11 +609,11 @@ void CheckpointPlugin::RenderSettings() {
         variance_car_rot[1] = 0.0f;
         break;
     case 1:
-        variance_car_rot[0] = variance_car_rot[1] = std::stof(twoval_holder[0].substr(1));
+        variance_car_rot[0] = variance_car_rot[1] = std::stof(twoval_holder[0]);
         break;
     case 2:
-        variance_car_rot[0] = std::stof(twoval_holder[0].substr(1));
-        variance_car_rot[1] = std::stof(twoval_holder[1].substr(0, twoval_holder[1].size() - 1));
+        variance_car_rot[0] = std::stof(twoval_holder[0]);
+        variance_car_rot[1] = std::stof(twoval_holder[1]);
         break;
     }
     if (ImGui::RangeSliderFloat("Car Rotation (strength)##crs", &variance_car_rot[0], &variance_car_rot[1], 0.0f, 10.0f, "(%.2f, %.2f)")) {
@@ -633,6 +635,8 @@ void CheckpointPlugin::RenderSettings() {
     static float variance_ball_rot[2];
     static std::string var_ball_rot;
     var_ball_rot = cvarManager->getCvar("cpt_variance_ball_rot").getStringValue();
+    replace(var_ball_rot, "(", "");
+    replace(var_ball_rot, ")", "");
     split(var_ball_rot, twoval_holder, ',');
     switch (twoval_holder.size()) {
     case 0:
@@ -640,11 +644,11 @@ void CheckpointPlugin::RenderSettings() {
         variance_ball_rot[1] = 0.0f;
         break;
     case 1:
-        variance_ball_rot[0] = variance_ball_rot[1] = std::stof(twoval_holder[0].substr(1));
+        variance_ball_rot[0] = variance_ball_rot[1] = std::stof(twoval_holder[0]);
         break;
     case 2:
-        variance_ball_rot[0] = std::stof(twoval_holder[0].substr(1));
-        variance_ball_rot[1] = std::stof(twoval_holder[1].substr(0, twoval_holder[1].size() - 1));
+        variance_ball_rot[0] = std::stof(twoval_holder[0]);
+        variance_ball_rot[1] = std::stof(twoval_holder[1]);
         break;
     }
     if (ImGui::RangeSliderFloat("Ball Rotation (strength)##brs", &variance_ball_rot[0], &variance_ball_rot[1], 0.0f, 10.0f, "(%.2f, %.2f)")) {
@@ -838,10 +842,10 @@ void CheckpointPlugin::doCheckpoint(std::vector<std::string> command) {
 void CheckpointPlugin::registerVarianceCVars() {
     cvarManager->registerCvar("cpt_variance_car_dir", "0", "If set, randomly vary car's direction when resuming", true, true, 0, true, 30, true);
     cvarManager->registerCvar("cpt_variance_car_spd", "0", "If set, randomly vary car's speed when resuming", true, true, 0, true, 50, true);
-    cvarManager->registerCvar("cpt_variance_car_rot", "0", "If set, randomly vary car's rotation when resuming", true, true, 0, true, 10, true);
+    cvarManager->registerCvar("cpt_variance_car_rot", "(0,0)", "If set, randomly vary car's rotation when resuming", true, true, 0, true, 10, true);
     cvarManager->registerCvar("cpt_variance_ball_dir", "0", "If set, randomly vary ball's direction when resuming", true, true, 0, true, 30, true);
     cvarManager->registerCvar("cpt_variance_ball_spd", "0", "If set, randomly vary ball's speed when resuming", true, true, 0, true, 50, true);
-    cvarManager->registerCvar("cpt_variance_ball_rot", "0", "If set, randomly vary ball's rotation when resuming", true, true, 0, true, 10, true);
+    cvarManager->registerCvar("cpt_variance_ball_rot", "(0,0)", "If set, randomly vary ball's rotation when resuming", true, true, 0, true, 10, true);
     cvarManager->registerCvar("cpt_variance_tot", "0", "Total variance applied to all factors (range)", true, true, 0, true, 50, true);
 }
 
