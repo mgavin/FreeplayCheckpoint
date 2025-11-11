@@ -10,12 +10,9 @@
 
 #include "bakkesmod/plugin/bakkesmodplugin.h"
 #include "bakkesmod/plugin/pluginsettingswindow.h"
+#include "bakkesmod/plugin/pluginwindow.h"
 #include "utils/parser.h"
 #include "state.h"
-
-#include "imgui.h"
-#include "imgui_internal.h"
-#include "imgui_rangeslider.h"
 
 #include "version.h"
 
@@ -51,9 +48,11 @@ struct RewindState {
     float holdingFor = 0;
     bool deleting = false;
     int buttonsDown = 0x7f;
+    float lastRewindVal = 0.f;
+    float lastFFVal = 0.f;
 };
 
-class CheckpointPlugin : public BakkesMod::Plugin::BakkesModPlugin, public BakkesMod::Plugin::PluginSettingsWindow {
+class CheckpointPlugin : public BakkesMod::Plugin::BakkesModPlugin, public BakkesMod::Plugin::PluginSettingsWindow, public BakkesMod::Plugin::PluginWindow {
     //Boilerplate
     virtual void onLoad();
     void copyShot(std::vector<std::string> command);
@@ -72,6 +71,15 @@ class CheckpointPlugin : public BakkesMod::Plugin::BakkesModPlugin, public Bakke
     void RenderSettings();
     std::string GetPluginName();
     void SetImGuiContext(uintptr_t ctx);
+
+    // plugin "window" used for easily throwing up a menu to bind keys
+    void Render();
+    std::string GetMenuName();
+    std::string GetMenuTitle();
+    bool ShouldBlockInput();
+    bool IsActiveOverlay();
+    void OnOpen();
+    void OnClose();
 
 private:
     RewindState rewindState;
@@ -132,4 +140,70 @@ private:
     void setFrozen(bool car, bool ball);
     bool enabled();
     bool enabledLoads();
+
+    // grab RL's window handle to use during keybinding (to clear stuck mouse inputs)
+    static inline const HWND rl_hwnd = []() {
+        DWORD pid = GetCurrentProcessId();
+        static HWND hWnd = NULL;
+        WNDENUMPROC EnumWindowsFunc = [](HWND hwnd, LPARAM lParam) -> BOOL {
+            DWORD lpdwProcessId;
+            GetWindowThreadProcessId(hwnd, &lpdwProcessId);
+
+            if (lpdwProcessId == lParam) {
+#ifdef _MBCS
+                char str[128] = { 0 };
+                GetWindowText(hwnd, str, 128);
+                if (strstr(str, "Rocket") != NULL) {
+                    hWnd = hwnd;
+                    return FALSE;
+                }
+#else
+#ifdef _UNICODE
+                wchar_t str[128] = { 0 };
+                GetWindowText(hwnd, str, 128);
+                if (wcsstr(str, L"Rocket") != NULL) {
+                    hWnd = hwnd;
+                    return FALSE;
+                }
+#endif
+#endif
+            }
+
+            return TRUE;
+            };
+
+        EnumWindows(EnumWindowsFunc, pid);
+        return hWnd;
+        }();
+
+    enum class KEYBIND_ASSIGNWHICH {
+        NONE = 0,
+        CPT_FREEZE_KEY,
+        CPT_DO_CHECKPOINT_KEY,
+        CPT_PREV_CHECKPOINT_KEY,
+        CPT_NEXT_CHECKPOINT_KEY,
+        CPT_FREEZE_BALL_KEY,
+        CPT_MIRROR_STATE_KEY,
+        CPT_REWIND_KEY,
+        CPT_FASTFORWARD_KEY
+    } which_is_being_bound = KEYBIND_ASSIGNWHICH::NONE;
+
+    const static inline std::map<KEYBIND_ASSIGNWHICH, std::string> keys_to_cvars = {
+        {KEYBIND_ASSIGNWHICH::CPT_FREEZE_KEY, "cpt_freeze_key"},
+        {KEYBIND_ASSIGNWHICH::CPT_DO_CHECKPOINT_KEY, "cpt_do_checkpoint_key"},
+        {KEYBIND_ASSIGNWHICH::CPT_PREV_CHECKPOINT_KEY,"cpt_prev_checkpoint_key"},
+        {KEYBIND_ASSIGNWHICH::CPT_NEXT_CHECKPOINT_KEY, "cpt_next_checkpoint_key"},
+        {KEYBIND_ASSIGNWHICH::CPT_FREEZE_BALL_KEY, "cpt_freeze_ball_key"},
+        {KEYBIND_ASSIGNWHICH::CPT_MIRROR_STATE_KEY, "cpt_mirror_state_key"},
+        {KEYBIND_ASSIGNWHICH::CPT_REWIND_KEY, "cpt_rewind_key"},
+        {KEYBIND_ASSIGNWHICH::CPT_FASTFORWARD_KEY, "cpt_fastforward_key"},
+    };
+
+    std::vector<std::string> menu_names;
+
+    void OnKeyAxisInput(ActorWrapper aw, void* params, std::string eventName);
+    void OnKeyPressed(ActorWrapper aw, void* params, std::string eventName);
+    void OpenMenuForKeybinding();
+    void close_opened_menus();
+    void reopen_closed_menus();
 };

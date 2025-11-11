@@ -52,6 +52,8 @@ void CheckpointPlugin::registerBindingCVars() {
 	cvarManager->registerCvar("cpt_next_checkpoint_key", "XboxTypeS_DPad_Right", "Key to bind cpt_next_checkpoint to on cpt_apply_bindings");
 	cvarManager->registerCvar("cpt_freeze_ball_key", "XboxTypeS_DPad_Up", "Key to bind cpt_freeze_ball to on cpt_apply_bindings");
 	cvarManager->registerCvar("cpt_mirror_state_key", "XboxTypeS_DPad_Down", "Key to bind cpt_mirror_state to on cpt_apply_bindings");
+    cvarManager->registerCvar("cpt_rewind_key", "XboxTypeS_DPad_Down", "Key to bind to cpt_rewind on cpt_apply_bindings");
+    cvarManager->registerCvar("cpt_fastforward_key", "XboxTypeS_DPad_Down", "Key to bind to cpt_fastforward on cpt_apply_bindings");
 	cvarManager->registerNotifier("cpt_remove_bindings", bind(&CheckpointPlugin::removeBindKeys, this, _1),
 		"Removes the configured button bindings for the Freeplay Checkpoint plugin", PERMISSION_ALL);
 	cvarManager->registerNotifier("cpt_apply_bindings", bind(&CheckpointPlugin::applyBindKeys, this, _1),

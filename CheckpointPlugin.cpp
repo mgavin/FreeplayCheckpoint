@@ -9,12 +9,19 @@
 #include "pch.h"
 #include "CheckpointPlugin.h"
 
+#include <shellapi.h>
+#define WIN32_LEAN_AND_MEAN
+
 #include "bakkesmod/wrappers/GameEvent/TutorialWrapper.h"
 #include "bakkesmod/wrappers/GameObject/CarComponent/BoostWrapper.h"
 #include "bakkesmod/wrappers/GameObject/CarWrapper.h"
 #include "bakkesmod/wrappers/GameObject/BallWrapper.h"
 
 #include "bakkesmod/wrappers/ArrayWrapper.h"
+
+#include "imgui.h"
+#include "imgui_internal.h"
+#include "imgui_rangeslider.h"
 
 using namespace std::placeholders;
 
@@ -223,7 +230,7 @@ void CheckpointPlugin::onLoad()
     registerBindingCVars();
 
     // Draw the checkpoint or notification about checkpoint deletion.
-    gameWrapper->RegisterDrawable(std::bind(&CheckpointPlugin::Render, this, std::placeholders::_1));
+    gameWrapper->RegisterDrawable(std::bind(static_cast<void(CheckpointPlugin::*)(CanvasWrapper)>(&CheckpointPlugin::Render), this, std::placeholders::_1));
 }
 
 bool CheckpointPlugin::enabled() {
@@ -419,82 +426,385 @@ void CheckpointPlugin::nextCheckpoint(std::vector<std::string> command) {
     loadCurCheckpoint();
 }
 
-void CheckpointPlugin::RenderSettings() {
-    // main driver for rendering plugin settings
-    R"(Freeplay Checkpoint ????? would the title not show up??)";
+/**
+ * @brief This is for helping with IMGUI stuff
+ *
+ *  copied from: https://github.com/ocornut/imgui/discussions/3862
+ *
+ * @param width total width of items
+ * @param alignment where on the line to align
+ */
+static inline void AlignForWidth(float width, float alignment = 0.5f) {
+      float avail = ImGui::GetContentRegionAvail().x;
+      float off   = (avail - width) * alignment;
+      if (off > 0.0f) { ImGui::SetCursorPosX(ImGui::GetCursorPosX() + off); }
+}
+
+/**
+ * @brief https://mastodon.gamedev.place/@dougbinks/99009293355650878
+ *
+ * @param col_ The color the underline should be.
+ */
+static inline void AddUnderline(ImColor col_) {
+    ImVec2 min = ImGui::GetItemRectMin();
+    ImVec2 max = ImGui::GetItemRectMax();
+    min.y = max.y;
+    ImGui::GetWindowDrawList()->AddLine(min, max, col_, 1.0f);
+}
+
+/**
+ * @brief taken from https://gist.github.com/dougbinks/ef0962ef6ebe2cadae76c4e9f0586c69
+ * "hyperlink urls"
+ *
+ * @param text_ The shown text.
+ * @param URL_ The url accessed after clicking the shown text.
+ * @param SameLineBefore_ Should use on the same line before?
+ * @param SameLineAfter_ Should use on the same line after?
+ */
+static inline void TextURL(const char* text_, const char* URL_, uint8_t SameLineBefore_, uint8_t SameLineAfter_) {
+    if (1 == SameLineBefore_) {
+        ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
+    }
+    ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(0, 165, 255, 255));
+    ImGui::Text("%s", text_);
+    ImGui::PopStyleColor();
+    if (ImGui::IsItemHovered()) {
+        if (ImGui::IsMouseClicked(0)) {
+            // What if the URL length is greater than int but less than size_t?
+            // well then the program should crash, but this is fine.
+            const int nchar
+                = std::clamp(static_cast<int>(std::strlen(URL_)), 0, (std::numeric_limits<int>::max)() - 1);
+            wchar_t* URL = new wchar_t[nchar + 1];
+            wmemset(URL, 0, nchar + 1);
+            MultiByteToWideChar(CP_UTF8, 0, URL_, nchar, URL, nchar);
+            ShellExecuteW(NULL, L"open", URL, NULL, NULL, SW_SHOWNORMAL);
+
+            delete[] URL;
+        }
+        AddUnderline(ImGui::GetStyle().Colors[ImGuiCol_ButtonHovered]);
+        ImGui::SetTooltip("  Open in browser\n%s", URL_);
+    }
+    else {
+        AddUnderline(ImGui::GetStyle().Colors[ImGuiCol_Button]);
+    }
+    if (1 == SameLineAfter_) {
+        ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
+    }
+}
+
+inline void CheckpointPlugin::OnKeyPressed(ActorWrapper aw, void* params, std::string eventName) {
+    struct s {
+        int32_t cid;
+        struct {
+            int i;
+            int n;
+        } k;
+
+        uint8_t e;
+    } *p = reinterpret_cast<s*>(params);
+    log(std::format("cid: {}, i: {}, n: {}, e: {}", p->cid, p->k.i, p->k.n, p->e));
 
 
-    ImGui::TextUnformatted("Bindings");
-    ImGui::TextUnformatted("Instructions: Enter Freeplay, HOLD button you wish to assign and click desired action button");
-    ImGui::TextUnformatted("KBM players: bind cpt_ commands manually in Bakkesmod Bindings tab");
+        ImGui::CloseCurrentPopup();
 
-    ImGui::Separator();
 
-    // freeze key
-    if (ImGui::SmallButton("Freeze (cpt_freeze)##fz")) {
-        captureBindKey({ "cpt_capture_key", "cpt_freeze" });
+    cvarManager->executeCommand("closemenu checkpointplugin", false);
+    gameWrapper->UnhookEvent("Function TAGame.GameViewportClient_TA.HandleKeyPress");
+    gameWrapper->UnhookEvent("Function TAGame.GameViewportClient_TA.HandleAxisPress");
+    std::string key = gameWrapper->GetFNameByIndex(p->k.i);
+
+    // this is because of mem-access issues ... even though they may still exist
+    gameWrapper->Execute([this, key, et = p->e](GameWrapper* gw) {
+        log(std::format("key: {}, et: {}", key, et));
+        cvarManager->getCvar(keys_to_cvars.at(which_is_being_bound)).setValue(key);
+        which_is_being_bound = KEYBIND_ASSIGNWHICH::NONE;
+        });
+}
+
+inline void CheckpointPlugin::OnKeyAxisInput(ActorWrapper aw, void* params, std::string eventName) {
+    struct s {
+        int32_t cid;
+        struct {
+            int i;
+            int n;
+        } k;
+        float d;
+    } *p = reinterpret_cast<s*>(params);
+    log(std::format("cid: {}, i: {}, n: {}, e: {}", p->cid, p->k.i, p->k.n, p->d));
+
+    // this is done in ways to emulate how the game does it
+    if (std::fabs(p->d) <= 0.8) {
+        // commit to a direction, lol
+        return;
     }
 
-    ImGui::SameLine(0.f, 50.f);
+    std::string key = gameWrapper->GetFNameByIndex(p->k.i);
+    if (key.contains("Mouse") && std::abs(p->d) < 3) {
+        // a delta of 3 seems to be the threshhold for a mouse axis input
+        return;
+    }
+
+    ImGui::CloseCurrentPopup();
+    cvarManager->executeCommand("closemenu checkpointplugin", false);
+    gameWrapper->UnhookEvent("Function TAGame.GameViewportClient_TA.HandleAxisPress");
+    gameWrapper->UnhookEvent("Function TAGame.GameViewportClient_TA.HandleKeyPress");
+
+    // this is because of mem-access issues ... even though they may still exist
+    gameWrapper->Execute([this, key, d = p->d](GameWrapper* gw) {
+        if (key == "XboxTypeS_LeftTriggerAxis" || key == "XboxTypeS_RightTriggerAxis") {
+            // this doesn't have a positive/negative direction, so it's not 2 inputs in one
+            cvarManager->getCvar(keys_to_cvars.at(which_is_being_bound)).setValue(key);
+        }
+        else {
+            std::string first_set = signbit(d) ? "-" : "+";
+            std::string second_set = signbit(d) ? "+" : "-";
+            switch (which_is_being_bound) {
+            case KEYBIND_ASSIGNWHICH::CPT_REWIND_KEY:
+                cvarManager->getCvar(keys_to_cvars.at(KEYBIND_ASSIGNWHICH::CPT_REWIND_KEY)).setValue(key + first_set);
+                cvarManager->getCvar(keys_to_cvars.at(KEYBIND_ASSIGNWHICH::CPT_FASTFORWARD_KEY)).setValue(key + second_set);
+                break;
+            case KEYBIND_ASSIGNWHICH::CPT_FASTFORWARD_KEY:
+                cvarManager->getCvar(keys_to_cvars.at(KEYBIND_ASSIGNWHICH::CPT_FASTFORWARD_KEY)).setValue(key + first_set);
+                cvarManager->getCvar(keys_to_cvars.at(KEYBIND_ASSIGNWHICH::CPT_REWIND_KEY)).setValue(key + second_set);
+                break;
+            }
+
+        }
+        which_is_being_bound = KEYBIND_ASSIGNWHICH::NONE;
+        });
+}
+
+/**
+* @brief
+* @details Done within the IMGUI section.
+*
+*/
+inline void CheckpointPlugin::OpenMenuForKeybinding() {
+    log("HOLY MACKERAL IM TRYING TO CLEAR THESE MOUSE BUTTONS!");
+    // SEND RL'S WINDOW CERTAIN EVENTS, BECAUSE IT MIGHT GET STUCK NOT RECEIVING INPUT BEFORE IMGUI INTERCEPTS IT
+    SendMessage(rl_hwnd, 0x202, NULL, NULL);              // WM_LBUTTONUP
+    SendMessage(rl_hwnd, 0x205, NULL, NULL);              // WM_RBUTTONUP
+    SendMessage(rl_hwnd, 0x208, NULL, NULL);              // WM_MBUTTONUP
+    SendMessage(rl_hwnd, 0x20C, MAKEWORD(0, 0x1), NULL);  // WM_XBUTTON1UP
+    SendMessage(rl_hwnd, 0x20C, MAKEWORD(0, 0x2), NULL);  // WM_XBUTTON2UP
+
+    gameWrapper->Execute([this](GameWrapper* gw) {
+        // still confused where exactly this should be done.
+        close_opened_menus();
+        // end confusion.
+
+        cvarManager->executeCommand("openmenu checkpointplugin", false);
+        gameWrapper->HookEventWithCaller<ActorWrapper>(
+            "Function TAGame.GameViewportClient_TA.HandleKeyPress",
+            std::bind(
+                &CheckpointPlugin::OnKeyPressed,
+                this,
+                std::placeholders::_1,
+                std::placeholders::_2,
+                std::placeholders::_3));
+
+        if (which_is_being_bound == KEYBIND_ASSIGNWHICH::CPT_REWIND_KEY || which_is_being_bound == KEYBIND_ASSIGNWHICH::CPT_FASTFORWARD_KEY) {
+        gameWrapper->HookEventWithCaller<ActorWrapper>(
+            "Function TAGame.GameViewportClient_TA.HandleAxisPress",
+            std::bind(
+                &CheckpointPlugin::OnKeyAxisInput,
+                this,
+                std::placeholders::_1,
+                std::placeholders::_2,
+                std::placeholders::_3));
+        }
+                });
+
+}
+
+void CheckpointPlugin::close_opened_menus() {
+    cvarManager->executeCommand("debugui", true);
+
+    CVarWrapper bmlf = cvarManager->getCvar("bakkesmod_log_instantflush");  // I NEED *this* to be a thing.
+    int         temp = 0;
+    if (bmlf) {
+        temp = bmlf.getIntValue();
+        bmlf.setValue(1);
+    }
+    cvarManager->log("FLUSH?");
+    if (bmlf) {
+        bmlf.setValue(temp);
+    }
+
+    auto logfile = std::ifstream(gameWrapper->GetBakkesModPath() / "bakkesmod.log", std::ios::ate);
+    logfile.seekg(-1, std::ios::end);  // otherwise we're at the -1 end
+    if (logfile.peek() == '\n' || logfile.peek() == '\r') {
+        // skip the last possible newline
+        logfile.seekg(-1, std::ios::cur);
+    }
+    const auto get_prev_line = [this, &logfile]() -> auto {
+        std::string line;
+        if (logfile.peek() == '\n' || logfile.peek() == '\r') {
+            // because "\r\n" might exist.
+            logfile.seekg(-1, std::ios::cur);
+        }
+
+        while (logfile.good() && logfile.peek() != '\r' && logfile.peek() != '\n') {
+            line += logfile.peek();
+            logfile.seekg(-1, std::ios::cur);
+        }
+
+        if (logfile.peek() == '\n' || logfile.peek() == '\r') {
+            // because "\r\n" might exist.
+            logfile.seekg(-1, std::ios::cur);
+        }
+
+        return line | std::views::reverse | std::ranges::to<std::string>();
+        };
+
+    int i = 0;
+    while (logfile.good()) {
+        // for "runaway" protection... JUST IN CASE THERE'S A BUG!
+        if (i > 30) {
+            break;
+        }
+        ++i;
+        // for "runaway" protection... JUST IN CASE THERE'S A BUG!
+
+        std::string line = get_prev_line();
+        std::transform(begin(line), end(line), begin(line), [](unsigned char c) { return std::toupper(c); });
+        //log::log_debug("liNE: {}", line);
+
+        if (line.contains("CURRENTLY ACTIVE WINDOWS")) {
+            int num = std::stoi(line.substr(line.rfind(" ") + 1));
+
+            std::string nl;
+            // read the current line since getter is set back due to get_prev_line()
+            std::getline(logfile, nl);
+            // read the current line since getter is set back due to get_prev_line()
+            std::getline(logfile, nl);
+
+            //log::log_debug("NL: {}", nl);
+            for (int i = 0; i < num; ++i) {
+                std::getline(logfile, nl);
+                //log::log_debug("NL: {}", nl);
+                menu_names.push_back(nl.substr(nl.rfind(" ") + 1));
+            }
+
+            break;
+        }
+    }
+
+    for (auto& mn : menu_names) {
+        cvarManager->executeCommand(std::format("closemenu {}", mn), false);
+    }
+}
+
+void CheckpointPlugin::reopen_closed_menus() {
+    for (auto& mn : menu_names) {
+        cvarManager->executeCommand(std::format("openmenu {}", mn), false);
+    }
+    menu_names.clear();
+}
+
+
+void CheckpointPlugin::RenderSettings() {
+    // main driver for rendering plugin settings
+    ImGui::TextUnformatted("Bindings");
+    ImGui::TextUnformatted("Instructions: Click the button corresponding to the binding to choose a button to set.");
+    ImGui::TextUnformatted("Only rewind/fastforward can be set to an input that has an axis.");
+    ImGui::TextUnformatted("After assigning bindings to each action, click \"Apply All Bindings\" to set them.");
+
+    ImGui::Separator();
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.f, ImGui::GetStyle().ItemSpacing.y));
+
+    ImGui::BeginColumns("bindings columns##bc", 3, ImGuiColumnsFlags_NoBorder | ImGuiColumnsFlags_NoResize);
+    ImGui::SetColumnWidth(0, 280.f);
+    ImGui::SetColumnWidth(1, 230.f);
+    ImGui::SetColumnWidth(2, 200.f);
+
+    // freeze key
+    if (ImGui::Button("Freeze (cpt_freeze)##fz", ImVec2(250.f, 0.f))) {
+        which_is_being_bound = KEYBIND_ASSIGNWHICH::CPT_FREEZE_KEY;
+        OpenMenuForKeybinding();
+    }
+
+    ImGui::NextColumn();
     static std::string cfk;
     cfk = cvarManager->getCvar("cpt_freeze_key").getStringValue();
     ImGui::Text("[ %s ]", cfk.c_str());
 
+    ImGui::NextColumn();
+    ImGui::NextColumn();
+
     // do checkpoint
-    if (ImGui::SmallButton("Checkpoint (cpt_do_checkpoint)##cp")) {
-        captureBindKey({ "cpt_capture_key", "cpt_do_checkpoint" });
+    if (ImGui::Button("Checkpoint (cpt_do_checkpoint)##cp", ImVec2(250.f, 0.f))) {
+        which_is_being_bound = KEYBIND_ASSIGNWHICH::CPT_DO_CHECKPOINT_KEY;
+        OpenMenuForKeybinding();
     }
 
-    ImGui::SameLine(0.f, 50.f);
+    ImGui::NextColumn();
+
     static std::string cdck;
     cdck = cvarManager->getCvar("cpt_do_checkpoint_key").getStringValue();
     ImGui::Text("[ %s ] ", cdck.c_str());
 
+    ImGui::NextColumn();
+    ImGui::NextColumn();
+
     // prev checkpoint
-    if (ImGui::SmallButton("Prev. Checkpoint (cpt_prev_checkpoint)##pc")) {
-        captureBindKey({ "cpt_capture_key", "cpt_prev_checkpoint" });
+    if (ImGui::Button("Prev. Checkpoint (cpt_prev_checkpoint)##pc", ImVec2(250.f, 0.f))) {
+        which_is_being_bound = KEYBIND_ASSIGNWHICH::CPT_PREV_CHECKPOINT_KEY;
+        OpenMenuForKeybinding();
     }
 
-    ImGui::SameLine(0.f, 50.f);
+    ImGui::NextColumn();
+
     static std::string cpck;
     cpck = cvarManager->getCvar("cpt_prev_checkpoint_key").getStringValue();
     ImGui::Text("[ %s ]", cpck.c_str());
 
-    ImGui::SameLine(0.f, 50.f);
+    ImGui::NextColumn();
+
     static bool ignore_while_playing_prev;
     ignore_while_playing_prev = cvarManager->getCvar("cpt_ignore_prev").getBoolValue();
     if (ImGui::Checkbox("Ignore While Playing##prev", &ignore_while_playing_prev)) {
         cvarManager->getCvar("cpt_ignore_prev").setValue(ignore_while_playing_prev);
     }
 
+    ImGui::NextColumn();
+
     // next checkpoint
-    if (ImGui::SmallButton("Next Checkpoint (cpt_next_checkpoint)##nc")) {
-        captureBindKey({ "cpt_capture_key", "cpt_next_checkpoint" });
+    if (ImGui::Button("Next Checkpoint (cpt_next_checkpoint)##nc", ImVec2(250.f, 0.f))) {
+        which_is_being_bound = KEYBIND_ASSIGNWHICH::CPT_NEXT_CHECKPOINT_KEY;
+        OpenMenuForKeybinding();
     }
 
-    ImGui::SameLine(0.f, 50.f);
+    ImGui::NextColumn();
+
     static std::string cnck;
     cnck = cvarManager->getCvar("cpt_next_checkpoint_key").getStringValue();
     ImGui::Text("[ %s ]", cnck.c_str());
 
-    ImGui::SameLine(0.f, 50.f);
+    ImGui::NextColumn();
+
     static bool ignore_while_playing_next;
     ignore_while_playing_next = cvarManager->getCvar("cpt_ignore_next").getBoolValue();
     if (ImGui::Checkbox("Ignore While Playing##next", &ignore_while_playing_next)) {
         cvarManager->getCvar("cpt_ignore_next").setValue(ignore_while_playing_next);
     }
 
-    // freeze ball key
-    if (ImGui::SmallButton("Freeze Ball/Unfreeze Car (cpt_freeze_ball)##fbuc")) {
-        captureBindKey({ "cpt_capture_key", "cpt_freeze_ball" });
+    ImGui::NextColumn();
+
+    // freeze ball
+    if (ImGui::Button("Freeze Ball/Unfreeze Car (cpt_freeze_ball)##fbuc", ImVec2(250.f, 0.f))) {
+        which_is_being_bound = KEYBIND_ASSIGNWHICH::CPT_FREEZE_BALL_KEY;
+        OpenMenuForKeybinding();
     }
 
-    ImGui::SameLine(0.f, 50.f);
+    ImGui::NextColumn();
+
     static std::string cfbuc;
     cfbuc = cvarManager->getCvar("cpt_freeze_ball_key").getStringValue();
-    ImGui::Text("%s", cfbuc.c_str());
+    ImGui::Text("[ %s ]", cfbuc.c_str());
 
-    ImGui::SameLine(0.f, 50.f);
+    ImGui::NextColumn();
+
     static bool ignore_freeze_ball;
     ignore_freeze_ball = cvarManager->getCvar("cpt_ignore_freeze_ball").getBoolValue();
     if (ImGui::Checkbox("Ignore While Playing##fzbl", &ignore_freeze_ball)) {
@@ -502,37 +812,56 @@ void CheckpointPlugin::RenderSettings() {
     }
 
     ImGui::NewLine();
+    ImGui::NextColumn();
 
     // mirror state
-    if (ImGui::SmallButton("Mirror shot (cpt_mirror_state)#ms")) {
-        captureBindKey({ "cpt_capture_key", "cpt_mirror_state" });
+    if (ImGui::Button("Mirror shot (cpt_mirror_state)##ms", ImVec2(250.f, 0.f))) {
+        which_is_being_bound = KEYBIND_ASSIGNWHICH::CPT_MIRROR_STATE_KEY;
+        OpenMenuForKeybinding();
     }
 
-    ImGui::SameLine(0.f, 50.f);
+    ImGui::NextColumn();
+
     static std::string cmsk;
     cmsk = cvarManager->getCvar("cpt_mirror_state_key").getStringValue();
-    ImGui::Text("%s", cmsk.c_str());
+    ImGui::Text("[ %s ]", cmsk.c_str());
 
+    ImGui::NextColumn();    ImGui::NextColumn();
 
-    /////// todo
-    R"(
-0|  Rewind & Fast Forward (cannot change)  |
-7|
-9| [ Steer Left & Right ]
-9|
-)";
-    ImGui::SetWindowFontScale(1.2f);
-    ImGui::TextUnformatted("GOTTA ADD AXIS KEY HANDLING HERE");
-    // 1. set keybind
-    // 2. if keybind is an axis key, and has an equal and opposite axis, it becomes the only binding
-    // 3. if it doesn't have an equal and opposite axis, open up the selection to be the other side
-    // 4. DUH!
-    ImGui::SetWindowFontScale(1.0f);
-    /////// todo
+    // rewind
+    if (ImGui::Button("Rewind (cpt_rewind)##rw", ImVec2(250.f, 0.f))) {
+        which_is_being_bound = KEYBIND_ASSIGNWHICH::CPT_REWIND_KEY;
+        OpenMenuForKeybinding();
+    }
 
+    ImGui::NextColumn();
 
-        // apply all bindings
-    if (ImGui::SmallButton("Apply All Bindings##aab")) {
+    static std::string crwk;
+    crwk = cvarManager->getCvar("cpt_rewind_key").getStringValue();
+    ImGui::Text("[ %s ]", crwk.c_str());
+
+    ImGui::NextColumn();    ImGui::NextColumn();
+
+    // fast forward
+    if (ImGui::Button("Fast Forward (cpt_fastforward)##ff", ImVec2(250.f, 0.f))) {
+        which_is_being_bound = KEYBIND_ASSIGNWHICH::CPT_FASTFORWARD_KEY;
+        OpenMenuForKeybinding();
+    }
+
+    ImGui::NextColumn();
+
+    static std::string cffk;
+    cffk = cvarManager->getCvar("cpt_fastforward_key").getStringValue();
+    ImGui::Text("[ %s ]", cffk.c_str());
+
+    ImGui::EndColumns();
+    ImGui::PopStyleVar();
+
+    ImGui::NewLine();
+
+    // apply all bindings
+    ImGui::SetNextItemWidth(130.f);
+    if (ImGui::Button("Apply All Bindings##aab")) {
         applyBindKeys({});
     }
 
@@ -541,14 +870,16 @@ void CheckpointPlugin::RenderSettings() {
 
     ImGui::SameLine(0.f, 50.f);
     // remove binding
-    if (ImGui::SmallButton("Remove Bindings##rb")) {
+    ImGui::SetNextItemWidth(20.f);
+    if (ImGui::Button("Remove Bindings##rb")) {
         removeBindKeys({});
     }
-    ImGui::SameLine(0.f, 50.f);
-    ImGui::TextUnformatted(":(");
+    ImGui::SameLine(0.f, 10.f);
+    ImGui::TextUnformatted("*Removes actions from the buttons on the left from the bound keys on the right. also :(");
 
     // reset default bindings
-    if (ImGui::SmallButton("Reset Default Bindings##rdb")) {
+    ImGui::SetNextItemWidth(20.f);
+    if (ImGui::Button("Reset Default Bindings##rdb")) {
         resetDefaultBindKeys({});
     }
     ImGui::SameLine(0.f, 50.f);
@@ -745,10 +1076,12 @@ void CheckpointPlugin::RenderSettings() {
     ImGui::NewLine();
     ImGui::NewLine();
 
-    ImGui::TextUnformatted(R"(Freeplay Checkpoint
-Bugs/Feature Requests: github.com/NitrOP7674 -or- on Discord: https://discord.gg/SPBxrtfrZw
-** Please make sure to read the README first! **
-)");
+    ImGui::TextUnformatted("Freeplay Checkpoint");
+    ImGui::TextUnformatted("Bugs/Feature Requests:");
+    TextURL("github.com/NitrOP7674", "https://github.com/NitrOP7674", TRUE, TRUE);
+    ImGui::TextUnformatted(" -or- on Discord:");
+    TextURL("https://discord.gg/SPBxrtfrZw", "https://discord.gg/SPBxrtfrZw", TRUE, FALSE);
+    ImGui::TextUnformatted("** Please make sure to read the README first! **");
 }
 
 std::string CheckpointPlugin::GetPluginName() {
@@ -904,6 +1237,7 @@ void CheckpointPlugin::loadGameState(const GameState& state) {
     rewindState.justLoadedQuickCheckpoint = false;
     rewindState.deleting = false;
     rewindState.buttonsDown = 0x7f;
+    rewindState.lastFFVal = rewindState.lastRewindVal = 0.f;
     playingFromCheckpoint = true; // not playing yet but must resume eventually.
 }
 
@@ -918,11 +1252,61 @@ void CheckpointPlugin::OnPreAsync(std::string funcName)
     }
 
     if (rewindMode) {
+        // entering rewind mode, so hook getting rewind/ff inputs.
+        auto capture_key_input = [this](ActorWrapper w, void* params, std::string eventName) {
+            struct s {
+                int32_t cid;
+                struct {
+                    int i;
+                    int n;
+                } k;
+                union {
+                    uint8_t e;
+                    float d;
+                } t;
+            } *p = reinterpret_cast<s*>(params);
+            float amt = 0.f;
+            if (eventName.contains("KeyPress")) {
+                switch (p->t.e) {
+                case 0: // pressed
+                case 2: // repeat
+                    amt = 1.f;
+                    break;
+                case 1: // released
+                    amt = 0.f;
+                }
+            } else if (eventName.contains("AxisPress")) { // redundant due to only 2 choices so far, but w/e
+                amt = p->t.d;
+            }
+
+            if (gameWrapper->GetFNameByIndex(p->k.i) == cvarManager->getCvar("cpt_rewind_key").getStringValue()) {
+                log(std::format("rewinding amount: {}", amt));
+                rewindState.lastRewindVal = amt;
+            }
+            if (gameWrapper->GetFNameByIndex(p->k.i) == cvarManager->getCvar("cpt_fastforward_key").getStringValue()) {
+                log(std::format("fastforwarding amount: {}", amt));
+                rewindState.lastFFVal = amt;
+            }
+
+            };
+
+        gameWrapper->HookEventWithCallerPost<ActorWrapper>(
+            "Function TAGame.GameViewportClient_TA.HandleKeyPress",
+            capture_key_input);
+        gameWrapper->HookEventWithCallerPost<ActorWrapper>(
+            "Function TAGame.GameViewportClient_TA.HandleAxisPress",
+            capture_key_input);
+
+
         if (rewind(sw)) {
             applyVariance(latest).apply(gameWrapper, showBoost);
         }
     }
     else {
+        // unhook getting inputs for rewind state.
+        gameWrapper->UnhookEventPost("Function TAGame.GameViewportClient_TA.HandleKeyPress");
+        gameWrapper->UnhookEventPost("Function TAGame.GameViewportClient_TA.HandleAxisPress");
+
         record(sw);
     }
 }
@@ -974,16 +1358,16 @@ bool CheckpointPlugin::rewind(ServerWrapper sw) {
         return true; // Staying in rewind; apply state.
     }
     rewindState.buttonsDown = buttonsDown;
-
+    log(std::format("last rewind val: {}, last ff val: {}", rewindState.lastRewindVal, rewindState.lastFFVal));
     // Determine how much to rewind / advance time.
-    if (abs(ci.Steer) < .05f) { // Ignore slight input; keep current game state.
+    if (abs(rewindState.lastFFVal) < .05f && abs(rewindState.lastRewindVal) < .05f) { // Ignore slight input; keep current game state.
         return true; // Ignoring input; apply state.
     }
     rewindState.deleting = false;
-    if (ci.Steer < -.95 && rewindState.holdingFor <= 0) {
+    if (rewindState.lastRewindVal < -.95 && rewindState.holdingFor <= 0) {
         rewindState.holdingFor -= elapsed;
     }
-    else if (ci.Steer > .95 && rewindState.holdingFor >= 0) {
+    else if (rewindState.lastFFVal > .95 && rewindState.holdingFor >= 0) {
         rewindState.holdingFor += elapsed;
     }
     else {
@@ -1086,6 +1470,7 @@ void CheckpointPlugin::Render(CanvasWrapper canvas) {
     if (!enabled()) {
         return;
     }
+
     if (debug) {
         canvas.SetColor('\xff', '\xff', '\xff', '\xdc');
         auto screenSize = canvas.GetSize();
@@ -1188,3 +1573,102 @@ void CheckpointPlugin::saveCheckpointFile() {
     }
     out.close();
 }
+
+/**
+ * @brief do the following on menu open
+ */
+void CheckpointPlugin::OnOpen() {
+    if (which_is_being_bound == KEYBIND_ASSIGNWHICH::NONE) {
+        gameWrapper->Execute(
+            [this](GameWrapper* gw) { cvarManager->executeCommand("closemenu checkpointplugin", false); });
+    }
+};
+
+/**
+ * @brief do the following on menu close
+ */
+void CheckpointPlugin::OnClose() {
+    gameWrapper->Execute([this](GameWrapper* gw) { reopen_closed_menus(); });
+};
+
+/**
+ * @brief (ImGui) Code called while rendering your menu window
+ */
+void CheckpointPlugin::Render() {
+    if (which_is_being_bound != KEYBIND_ASSIGNWHICH::NONE) {
+       // show the key binding window
+// creating a translucent background
+        ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
+        ImGui::SetNextWindowSize(ImVec2(ImGui::GetIO().DisplaySize.x, ImGui::GetIO().DisplaySize.y));
+        ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(30.f, 30.0f, 30.0f, 0.2f));
+        ImGui::Begin(
+            "translucent_background",
+            NULL,
+             ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove
+            | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBringToFrontOnFocus
+            | ImGuiWindowFlags_NoNavFocus | ImGuiWindowFlags_NoFocusOnAppearing 
+            | ImGuiWindowFlags_NoInputs);
+        ImGui::PopStyleColor();
+        ImGui::SetNextWindowPos(ImGui::GetIO().DisplaySize * 0.5f, ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+
+        static bool is_open = false;
+        if (!is_open) {
+        ImGui::OpenPopup("Set Keybind##popup");
+        }
+        const static float scale = 1.4f;
+        ImVec2 ts = (ImGui::CalcTextSize("Press any key") * scale)
+            + ImGui::GetStyle().WindowPadding
+            + ImVec2(3.f, ImGui::GetStyle().ItemSpacing.y)
+            + ImGui::GetStyle().FramePadding;
+        ImGui::SetNextWindowSize(ts);
+        if ( is_open = ImGui::BeginPopupModal(
+            "Set Keybind##popup",
+            NULL,
+            ImGuiWindowFlags_NoDecoration
+            | ImGuiWindowFlags_NoMove
+            | ImGuiWindowFlags_NoSavedSettings)) {
+            ImGui::SetWindowFontScale(scale);
+            AlignForWidth(ImGui::GetWindowWidth());
+            ImGui::TextUnformatted("Press any key");
+            ImGui::EndPopup();
+        }
+        ImGui::End();
+    }
+};
+
+/**
+ * @brief Returns the name of the menu to refer to it by
+ *
+ * @return The name used refered to by togglemenu
+ */
+std::string CheckpointPlugin::GetMenuName() {
+    return "checkpointplugin";
+};
+
+/**
+ * @brief Returns a std::string to show as the title
+ *
+ * @return The title of the menu
+ */
+std::string CheckpointPlugin::GetMenuTitle() {
+    return "CheckpointPlugin";
+};
+
+/**
+ * @brief Is it the active overlay(window)?
+ *
+ * @return true if overlay which isn't interacted with (pluginwindow.h)
+ */
+bool CheckpointPlugin::IsActiveOverlay() {
+    return true;
+};
+
+/**
+ * @brief Should this block input from the rest of the program?
+ * (aka RocketLeague and BakkesMod windows)
+ *
+ * @return True/False for if bakkesmod should block input
+ */
+bool CheckpointPlugin::ShouldBlockInput() {
+    return false;
+};
