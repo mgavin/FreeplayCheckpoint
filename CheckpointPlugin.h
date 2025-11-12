@@ -17,7 +17,7 @@
 #include "version.h"
 
 constexpr auto PLUGIN_VERSION = stringify(VERSION_MAJOR) "." stringify(VERSION_MINOR) "." stringify(VERSION_PATCH) "." stringify(VERSION_BUILD);
-constexpr float MAX_DODGE_TIME = 1.2f; // TODO: LOOK AT THIS BEFORE POSSIBLY SUBMITTING A PR FOR THIS BRANCH
+constexpr float MAX_DODGE_TIME = 1.2f;
 
 template<typename T>
 void writePOD(std::ostream& out, const T& t) {
@@ -39,6 +39,18 @@ struct Rot {
     float Pitch, Yaw, Roll;
 };
 
+struct s {
+    int32_t cid;
+    struct {
+        int i;
+        int n;
+    } k;
+    union {
+        uint8_t e;
+        float d;
+    } t;
+};
+
 // TODO: make this a full-on "RewindMode" class with functions for operations
 struct RewindState {
     bool atCheckpoint = false;
@@ -48,8 +60,7 @@ struct RewindState {
     float holdingFor = 0;
     bool deleting = false;
     int buttonsDown = 0x7f;
-    float lastRewindVal = 0.f;
-    float lastFFVal = 0.f;
+    float lastSeekVal = 0.f;
 };
 
 class CheckpointPlugin : public BakkesMod::Plugin::BakkesModPlugin, public BakkesMod::Plugin::PluginSettingsWindow, public BakkesMod::Plugin::PluginWindow {
