@@ -98,8 +98,7 @@ void CheckpointPlugin::setFrozen(bool car, bool ball) {
     cvarManager->getCvar("cpt_ball_frozen").setValue(ball);
 }
 
-void CheckpointPlugin::onLoad()
-{
+void CheckpointPlugin::onLoad() {
     boolvar("cpt_clean_history", "If set, deletes history after the current point when exiting rewind mode", &deleteFutureHistory);
 
     boolvar("cpt_reset_on_goal", "If set, restore last resumed checkpoint when scoring a goal", &resetOnGoal);
@@ -270,20 +269,16 @@ void CheckpointPlugin::copyShot(std::vector<std::string> command) {
             return;
         }
         output = gs->toString();
-    }
-    else if (rewindMode) {
+    } else if (rewindMode) {
         cvarManager->log("Copying current position");
         output = latest.toString();
-    }
-    else if (hasQuickCheckpoint) {
+    } else if (hasQuickCheckpoint) {
         cvarManager->log("Copying quick checkpoint");
         output = quickCheckpoint.toString();
-    }
-    else if (checkpoints.size() > 0) {
+    } else if (checkpoints.size() > 0) {
         cvarManager->log("Copying checkpoint " + std::to_string(curCheckpoint + 1));
         output = checkpoints.at(curCheckpoint).toString();
-    }
-    else {
+    } else {
         cvarManager->log("No checkpoint to copy!");
         return;
     }
@@ -404,8 +399,7 @@ void CheckpointPlugin::prevCheckpoint(std::vector<std::string> command) {
         // the deleted one (the current one).
         if (curCheckpoint == 0) {
             curCheckpoint = checkpoints.size() - 1;
-        }
-        else {
+        } else {
             curCheckpoint--;
         }
     }
@@ -483,8 +477,7 @@ static inline void TextURL(const char* text_, const char* URL_, uint8_t SameLine
         }
         AddUnderline(ImGui::GetStyle().Colors[ImGuiCol_ButtonHovered]);
         ImGui::SetTooltip("  Open in browser\n%s", URL_);
-    }
-    else {
+    } else {
         AddUnderline(ImGui::GetStyle().Colors[ImGuiCol_Button]);
     }
     if (1 == SameLineAfter_) {
@@ -533,8 +526,7 @@ inline void CheckpointPlugin::OnKeyAxisInput(ActorWrapper aw, void* params, std:
         if (key == "XboxTypeS_LeftTriggerAxis" || key == "XboxTypeS_RightTriggerAxis") {
             // this doesn't have a positive/negative direction, so it's not 2 inputs in one
             cvarManager->getCvar(keys_to_cvars.at(which_is_being_bound)).setValue(key);
-        }
-        else {
+        } else {
             std::string first_set = signbit(d) ? "-" : "+";
             std::string second_set = signbit(d) ? "+" : "-";
             switch (which_is_being_bound) {
@@ -1083,8 +1075,7 @@ void CheckpointPlugin::lockCheckpoint(std::vector<std::string> command) {
     }
     if (locks[curCheckpoint]) {
         log("at cpt; unlocking: " + std::to_string(curCheckpoint + 1));
-    }
-    else {
+    } else {
         log("at cpt; locking: " + std::to_string(curCheckpoint + 1));
     }
     locks[curCheckpoint] = !locks[curCheckpoint];
@@ -1222,8 +1213,7 @@ void CheckpointPlugin::loadGameState(const GameState& state) {
     playingFromCheckpoint = true; // not playing yet but must resume eventually.
 }
 
-void CheckpointPlugin::OnPreAsync(std::string funcName)
-{
+void CheckpointPlugin::OnPreAsync(std::string funcName) {
     if (!gameWrapper->IsInFreeplay() && !gameWrapper->IsInCustomTraining()) {
         return;
     }
@@ -1313,8 +1303,7 @@ void CheckpointPlugin::OnPreAsync(std::string funcName)
         if (rewind(sw)) {
             applyVariance(latest).apply(gameWrapper, showBoost);
         }
-    }
-    else {
+    } else {
         // unhook getting inputs for rewind state.
         gameWrapper->UnhookEventPost("Function TAGame.GameViewportClient_TA.HandleKeyPress");
         gameWrapper->UnhookEventPost("Function TAGame.GameViewportClient_TA.HandleAxisPress");
@@ -1374,11 +1363,9 @@ bool CheckpointPlugin::rewind(ServerWrapper sw) {
     rewindState.deleting = false;
     if (rewindState.lastSeekVal < -.95 && rewindState.holdingFor <= 0) {
         rewindState.holdingFor -= elapsed;
-    }
-    else if (rewindState.lastSeekVal > .95 && rewindState.holdingFor >= 0) {
+    } else if (rewindState.lastSeekVal > .95 && rewindState.holdingFor >= 0) {
         rewindState.holdingFor += elapsed;
-    }
-    else {
+    } else {
         rewindState.holdingFor = 0;
     }
     float factor = std::clamp(abs(rewindState.holdingFor) * 2, 1.0f, 10.0f);
@@ -1400,8 +1387,7 @@ bool CheckpointPlugin::rewind(ServerWrapper sw) {
     return true; // Apply new state.
 }
 
-void CheckpointPlugin::record(ServerWrapper sw)
-{
+void CheckpointPlugin::record(ServerWrapper sw) {
     float currentTime = sw.GetSecondsElapsed();
     float elapsed = currentTime - lastRecordTime;
     if (elapsed < 0) {
@@ -1461,8 +1447,7 @@ void CheckpointPlugin::record(ServerWrapper sw)
     }
     if (dodgeExpiration == 0) {
         history.emplace_back(gameWrapper);
-    }
-    else {
+    } else {
         history.emplace_back(gameWrapper, MAX_DODGE_TIME - currentTime + dodgeExpiration);
     }
 }
