@@ -125,13 +125,14 @@ private:
     bool mirrorLoads = false;
     bool randomizeLoads = false;
     bool showBoost = false;
+    bool ignore_pitch_clearing = false;
+    bool ignore_steer_clearing = false;
 
     void addBind(std::string key, std::string cmd);
     void removeBind(std::string key, std::string cmd);
     void OnPreAsync(std::string funcName);
     void registerVarianceCVars();
     void registerBindingCVars();
-    void captureBindKey(std::vector<std::string> params);
     void removeBindKeys(std::vector<std::string> params);
     void applyBindKeys(std::vector<std::string> params);
     void resetDefaultBindKeys(std::vector<std::string> params);
@@ -151,31 +152,4 @@ private:
     void setFrozen(bool car, bool ball);
     bool enabled();
     bool enabledLoads();
-
-    enum class KEYBIND_ASSIGNWHICH {
-        NONE = 0,
-        CPT_FREEZE_KEY,
-        CPT_DO_CHECKPOINT_KEY,
-        CPT_PREV_CHECKPOINT_KEY,
-        CPT_NEXT_CHECKPOINT_KEY,
-        CPT_FREEZE_BALL_KEY,
-        CPT_MIRROR_STATE_KEY,
-        CPT_REWIND_KEY,
-        CPT_FASTFORWARD_KEY
-    } which_is_being_bound = KEYBIND_ASSIGNWHICH::NONE;
-
-    const static inline std::map<KEYBIND_ASSIGNWHICH, std::string> keys_to_cvars = {
-        {KEYBIND_ASSIGNWHICH::CPT_FREEZE_KEY, "cpt_freeze_key"},
-        {KEYBIND_ASSIGNWHICH::CPT_DO_CHECKPOINT_KEY, "cpt_do_checkpoint_key"},
-        {KEYBIND_ASSIGNWHICH::CPT_PREV_CHECKPOINT_KEY,"cpt_prev_checkpoint_key"},
-        {KEYBIND_ASSIGNWHICH::CPT_NEXT_CHECKPOINT_KEY, "cpt_next_checkpoint_key"},
-        {KEYBIND_ASSIGNWHICH::CPT_FREEZE_BALL_KEY, "cpt_freeze_ball_key"},
-        {KEYBIND_ASSIGNWHICH::CPT_MIRROR_STATE_KEY, "cpt_mirror_state_key"},
-        {KEYBIND_ASSIGNWHICH::CPT_REWIND_KEY, "cpt_rewind_key"},
-        {KEYBIND_ASSIGNWHICH::CPT_FASTFORWARD_KEY, "cpt_fastforward_key"},
-    };
-
-    void OnKeyAxisInput(ActorWrapper aw, void* params, std::string eventName);
-    void OnKeyPressed(ActorWrapper aw, void* params, std::string eventName);
-    void OpenMenuForKeybinding();
 };

@@ -47,18 +47,10 @@ void close_opened_menus(std::shared_ptr<CVarManagerWrapper> cvarManager, std::sh
         return line | std::views::reverse | std::ranges::to<std::string>();
         };
 
-    int i = 0;
-    while (logfile.good()) {
-        // for "runaway" protection... JUST IN CASE THERE'S A BUG!
-        if (i > 30) {
-            break;
-        }
-        ++i;
-        // for "runaway" protection... JUST IN CASE THERE'S A BUG!
-
+     // Limit 30 for "runaway" protection... JUST IN CASE THERE'S A BUG!
+    for (int i = 0; i < 30 && logfile.good(); i++) {
         std::string line = get_prev_line();
         std::transform(begin(line), end(line), begin(line), [](unsigned char c) { return std::toupper(c); });
-        //log::log_debug("liNE: {}", line);
 
         if (line.contains("CURRENTLY ACTIVE WINDOWS")) {
             int num = std::stoi(line.substr(line.rfind(" ") + 1));
@@ -69,10 +61,8 @@ void close_opened_menus(std::shared_ptr<CVarManagerWrapper> cvarManager, std::sh
             // read the current line since getter is set back due to get_prev_line()
             std::getline(logfile, nl);
 
-            //log::log_debug("NL: {}", nl);
             for (int i = 0; i < num; ++i) {
                 std::getline(logfile, nl);
-                //log::log_debug("NL: {}", nl);
                 menu_names.push_back(nl.substr(nl.rfind(" ") + 1));
             }
 

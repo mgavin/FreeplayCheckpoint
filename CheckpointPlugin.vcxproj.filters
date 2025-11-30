@@ -63,6 +63,9 @@
     <ClCompile Include="IMGUI\imguivariouscontrols.cpp">
       <Filter>IMGUI</Filter>
     </ClCompile>
+    <ClCompile Include="PluginSettings.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="CheckpointPlugin.h">
@@ -115,6 +118,9 @@
     </ClInclude>
     <ClInclude Include="IMGUI\imstb_truetype.h">
       <Filter>IMGUI</Filter>
+    </ClInclude>
+    <ClInclude Include="bindings.h">
+      <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

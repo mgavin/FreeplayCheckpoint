@@ -122,9 +122,11 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="CheckpointPlugin.cpp" />
+    <ClCompile Include="PluginSettings.cpp" />
     <ClCompile Include="state.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="bindings.h" />
     <ClInclude Include="IMGUI\imconfig.h" />
     <ClInclude Include="IMGUI\imgui.h" />
     <ClInclude Include="IMGUI\imguivariouscontrols.h" />
