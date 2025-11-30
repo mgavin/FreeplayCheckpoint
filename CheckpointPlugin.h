@@ -152,41 +152,6 @@ private:
     bool enabled();
     bool enabledLoads();
 
-    // grab RL's window handle to use during keybinding (to clear stuck mouse inputs)
-    static inline const HWND rl_hwnd = []() {
-        DWORD pid = GetCurrentProcessId();
-        static HWND hWnd = NULL;
-        WNDENUMPROC EnumWindowsFunc = [](HWND hwnd, LPARAM lParam) -> BOOL {
-            DWORD lpdwProcessId;
-            GetWindowThreadProcessId(hwnd, &lpdwProcessId);
-
-            if (lpdwProcessId == lParam) {
-#ifdef _MBCS
-                char str[128] = { 0 };
-                GetWindowText(hwnd, str, 128);
-                if (strstr(str, "Rocket") != NULL) {
-                    hWnd = hwnd;
-                    return FALSE;
-                }
-#else
-#ifdef _UNICODE
-                wchar_t str[128] = { 0 };
-                GetWindowText(hwnd, str, 128);
-                if (wcsstr(str, L"Rocket") != NULL) {
-                    hWnd = hwnd;
-                    return FALSE;
-                }
-#endif
-#endif
-            }
-
-            return TRUE;
-            };
-
-        EnumWindows(EnumWindowsFunc, pid);
-        return hWnd;
-        }();
-
     enum class KEYBIND_ASSIGNWHICH {
         NONE = 0,
         CPT_FREEZE_KEY,
@@ -210,11 +175,7 @@ private:
         {KEYBIND_ASSIGNWHICH::CPT_FASTFORWARD_KEY, "cpt_fastforward_key"},
     };
 
-    std::vector<std::string> menu_names;
-
     void OnKeyAxisInput(ActorWrapper aw, void* params, std::string eventName);
     void OnKeyPressed(ActorWrapper aw, void* params, std::string eventName);
     void OpenMenuForKeybinding();
-    void close_opened_menus();
-    void reopen_closed_menus();
 };
